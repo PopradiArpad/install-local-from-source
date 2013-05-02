@@ -321,7 +321,7 @@ class InstallLocalFromSource
             entry_name = elems[8]
             year = if year_or_time.include?(":") then this_year else year_or_time end
 
-            creation_date = Date.parse("#{day} #{month} #{year}")
+            creation_date = Date.parse("#{year}-#{month}-#{day}")
             name_and_creation_date << {:entry_name => entry_name, :creation_date => creation_date}
           end
           
@@ -344,7 +344,13 @@ class InstallLocalFromSource
             month,day,year_or_time = elems[5..7]
             year = if year_or_time.include?(":") then this_year else year_or_time end
 
-            creation_date = Date.parse("#{day} #{month} #{year}")
+            creation_date = Date.parse("#{year}-#{month}-#{day}")
+            #"FTP servers that use a UNIX directory structure do not include year information for files modified within the last 6-12 months." Hehe
+            if Date.today < creation_date
+              year = Date.today.year - 1
+              creation_date = Date.parse("#{year}-#{month}-#{day}")
+            end
+            
             name_and_creation_date << {:entry_name => entry_name, :creation_date => creation_date}
           end
           
