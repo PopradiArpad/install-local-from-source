@@ -274,13 +274,14 @@ class InstallLocalFromSource
               
               unzipped_dir_path = "#{source_root}/#{@unzipped_dir_name}"
               if File.exist?(unzipped_dir_path)
-                msg_ok "There is already a #{@unzipped_dir_name} dir in the download directory. Should it be removed? (yes/no)"
-                if STDIN.gets.strip != "yes"
+                msg_ok "There is already a #{@unzipped_dir_name} dir in the download directory. Should it be used? (yes/no)"
+                if STDIN.gets.strip == "yes"
                     msg_ok "#{@unzipped_dir_name} is not downloaded."
-                    return
+                    return true
                 end
                 
-                FileUtils.rm_rf(unzipped_dir_path)
+                msg_and_cmd("Removing #{unzipped_dir_path}",
+                            "cd #{source_root}; rm -rf #{@unzipped_dir_name}")
               end
               
               download_path = "#{source_root}/#{newest_tar_file}"
