@@ -286,8 +286,8 @@ class InstallLocalFromSource
                           "cd #{source_root}; tar -xf #{newest_tar_file}")
               throw "Can not extract #{newest_tar_file}" if not $?.success?
               
-              msg_ok "Removing #{newest_tar_file}"
-              FileUtils.rm_rf(download_path)
+              msg_and_cmd("Removing #{newest_tar_file}",
+                          "cd #{source_root}; rm  #{newest_tar_file}")
               
               true
             end #Net::FTP.open
