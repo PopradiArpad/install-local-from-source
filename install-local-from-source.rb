@@ -35,6 +35,10 @@ class InstallLocalFromSource
             `groups`.split[0]
         end #group
         
+        def Config.number_of_cores()
+            `cat /proc/cpuinfo | grep processor | wc -l`.to_i
+        end #number_of_cores
+        
         def Config.check
             if not valid?
                 puts_and_exit "You must edit the InstallLocalFromSource::Config class in #{__FILE__}.".red
@@ -120,10 +124,11 @@ class InstallLocalFromSource
     end #check_and_setup_environment
     
     def configure_build_install(dir)
-        source_root  = Config::source_root
-        install_root = Config::installation_root
-        user         = Config::user
-        group        = Config::group
+        source_root     = Config::source_root
+        install_root    = Config::installation_root
+        user            = Config::user
+        group           = Config::group
+        number_of_cores = Config::number_of_cores
         
         dir_path = "#{source_root}/#{dir}"
     
@@ -133,10 +138,10 @@ class InstallLocalFromSource
         msg_and_cmd("Give back the source directory to #{user}:#{group}",
                     "sudo chown -R #{user}:#{group} #{dir_path}")
         
-        msg_and_cmd("make",
-                    "cd #{dir_path}; make")
+        msg_and_cmd("Build parallel on all cores",
+                    "cd #{dir_path}; make -j #{number_of_cores}")
         
-        msg_and_cmd("make install",
+        msg_and_cmd("Install",
                     "cd #{dir_path}; make install")
     end #configure_build_install
     
