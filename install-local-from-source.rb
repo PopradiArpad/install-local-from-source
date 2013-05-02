@@ -343,6 +343,7 @@ class InstallLocalFromSource
         def get_name_and_creation_date(elems)
             this_year = Date.today.year
             
+            entry_name = elems[8]
             month,day,year_or_time = elems[5..7]
             year = if year_or_time.include?(":") then this_year else year_or_time end
 
