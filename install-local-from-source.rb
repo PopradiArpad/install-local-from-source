@@ -156,7 +156,7 @@ class InstallLocalFromSource
         
         def AutoApt.setup()
             if not installed?()
-                msg_and_cmd("Installing auto-apt",
+                msg_and_cmd("Installing auto-apt. You must type Y if You want to install (The question \"Do You want to continue [Y/n])\" is not seen.",
                             "sudo apt-get  install auto-apt")
             end
             
