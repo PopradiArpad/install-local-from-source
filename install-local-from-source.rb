@@ -268,13 +268,13 @@ class InstallLocalFromSource
               
               #get the newest tar file
               newest_tar_file = get_the_newest_tar_file(ftp)
-              puts "The newest version is: #{newest_tar_file}"
+              msg_ok "The newest version is: #{newest_tar_file}"
               
               @unzipped_dir_name = lib_and_version(newest_tar_file)
               
               unzipped_dir_path = "#{source_root}/#{@unzipped_dir_name}"
               if File.exist?(unzipped_dir_path)
-                puts "There is already a #{@unzipped_dir_name} dir in the download directory. Should it be removed? (yes/no)"
+                msg_ok "There is already a #{@unzipped_dir_name} dir in the download directory. Should it be removed? (yes/no)"
                 if STDIN.gets.strip != "yes"
                     msg_ok "#{@unzipped_dir_name} is not downloaded."
                     return
