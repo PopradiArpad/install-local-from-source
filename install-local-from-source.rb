@@ -226,7 +226,7 @@ class InstallLocalFromSource
                 f <<  variable_settings.align_to_right()
             end
 
-            msg_ok("Your .bashrc is modified. The simplest way to use these modifications if You open a new terminal and run this script from that again.")
+            puts_and_exit "Your .bashrc is modified. The simplest way to use these modifications if You open a new terminal and run this script from that again.".green
         end #setup()
         
         def ShellVariables.check_whether_a_path_variable_has_value(variable, expected_part)
