@@ -307,22 +307,15 @@ class InstallLocalFromSource
         end #lib_and_version
          
         def get_the_newest_directory(ftp)
-          #get all directories with theirs creation time
-          this_year = Date.today.year
           name_and_creation_date = []
-          ftp.list('*').each do |d|
+          ftp.list('*') do |d|
             elems = d.split
             
             #only directories are interesting
             entry_rights = elems[0]
             next if entry_rights !~ /^d.*/
             
-            month,day,year_or_time = elems[5..7]
-            entry_name = elems[8]
-            year = if year_or_time.include?(":") then this_year else year_or_time end
-
-            creation_date = Date.parse("#{year}-#{month}-#{day}")
-            name_and_creation_date << {:entry_name => entry_name, :creation_date => creation_date}
+            name_and_creation_date << get_name_and_creation_date(elems)
           end
           
           throw "No directory entry in #{ftp.pwd}" if name_and_creation_date.empty?
@@ -331,15 +324,24 @@ class InstallLocalFromSource
         end #get_the_newest_directory
         
         def get_the_newest_tar_file(ftp)
-          #get all directories with theirs creation time
-          this_year = Date.today.year
           name_and_creation_date = []
-          ftp.list('*').each do |d|
+          ftp.list('*') do |d|
             elems = d.split
             
             #only tar files are interesting
             entry_name = elems[8]
             next if entry_name !~ /\.tar\./
+            
+            name_and_creation_date << get_name_and_creation_date(elems)
+          end
+          
+          throw "No tar file in #{ftp.pwd}" if name_and_creation_date.empty?
+          
+          name_of_the_newest(name_and_creation_date)
+        end #get_the_newest_tar_file
+        
+        def get_name_and_creation_date(elems)
+            this_year = Date.today.year
             
             month,day,year_or_time = elems[5..7]
             year = if year_or_time.include?(":") then this_year else year_or_time end
@@ -351,18 +353,13 @@ class InstallLocalFromSource
               creation_date = Date.parse("#{year}-#{month}-#{day}")
             end
             
-            name_and_creation_date << {:entry_name => entry_name, :creation_date => creation_date}
-          end
+            {:entry_name => entry_name, :creation_date => creation_date}
+        end #get_name_and_creation_date
           
-          throw "No tar file in #{ftp.pwd}" if name_and_creation_date.empty?
-          
-          name_of_the_newest(name_and_creation_date)
-        end #get_the_newest_tar_file
-        
         def name_of_the_newest(name_and_creation_date)
             name_and_creation_date.sort_by {|en_cd| en_cd[:creation_date]}[-1][:entry_name]
         end #name_of_the_newest
-        
+
     end #Downloader
 
 end #InstallLocalFromSource
