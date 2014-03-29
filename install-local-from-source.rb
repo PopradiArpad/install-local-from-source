@@ -133,7 +133,7 @@ class InstallLocalFromSource
         dir_path = "#{source_root}/#{dir}"
     
         msg_and_cmd("Configure #{dir_path}",
-                    "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH auto-apt run ./configure --prefix=#{install_root}")
+                    "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH auto-apt run ./configure --prefix=#{install_root}")
         
         msg_and_cmd("Give back the source directory to #{user}:#{group}",
                     "sudo chown -R #{user}:#{group} #{dir_path}")
