@@ -9,361 +9,522 @@ require 'net/ftp'
 require 'date'
 require 'fileutils'
 
+class Settings
+  #THIS MUST BE FILLED BY YOU!
+  #The root of the locally installed bins/libs etc.
+  #E.g /home/yourhome/installed
+  def Settings.installation_root
+    ""
+  end #installation_root
+  
+  #THIS MUST BE FILLED BY YOU!
+  #The root of the locally downloaded and unpacked sources to install.
+  #E.g /home/yourhome/source
+  def Settings.source_root
+    ""
+  end #source_root
+  
+  def Settings.user
+    `whoami`.strip
+  end #user
+  
+  def Settings.group
+    `groups`.split[0]
+  end #group
+  
+  def Settings.number_of_cores
+    `cat /proc/cpuinfo | grep processor | wc -l`.to_i
+  end #number_of_cores
+end #Settings
+
+
+module TerminalUser
+  def puts_ok(text)
+    puts text.align_to_right.green
+  end #puts_ok
+
+  def puts_error(text)
+    puts text.align_to_right.red
+  end #puts_error
+
+  def puts_and_run(message, cmd)
+    puts_ok message
+    
+    if not sh(cmd)
+      puts_error "Can not #{message}"
+      exit
+    end
+  end #puts_and_run
+
+  def sh(cmd)
+    puts cmd.align_to_right.pink
+    
+    IO.popen("#{cmd}") do |io|
+      while l = io.gets
+        puts l
+      end
+    end 
+    
+    return $?.success?
+  end #sh
+end #TerminalUser
+
+
 class InstallLocalFromSource
+
+  include TerminalUser
+  
+  def workup_commands()
+    command = $*[0]
     
-    class Config
+    case command
+      when "setup"                      then setup
+      when "list_versions"              then list_versions
+      when "download_extract"           then download_extract
+      when "configure_build_install"    then configure_build_install
+      else                                   print_help
+    end
+  end #workup_commands
     
-        #THIS MUST BE FILLED BY YOU!
-        #The root of the locally installed bins/libs etc.
-        #E.g /home/yourhome/installed
-        def Config.installation_root()
-            ""
-        end #installation_root
-        
-        #THIS MUST BE FILLED BY YOU!
-        #The root of the locally downloaded and unpacked sources to install.
-        #E.g /home/yourhome/source
-        def Config.source_root()
-            ""
-        end #source_root
-        
-        def Config.user()
-            `whoami`.strip
-        end #user
-        
-        def Config.group()
-            `groups`.split[0]
-        end #group
-        
-        def Config.number_of_cores()
-            `cat /proc/cpuinfo | grep processor | wc -l`.to_i
-        end #number_of_cores
-        
-        def Config.check
-            if not valid?
-                puts_and_exit "You must edit the InstallLocalFromSource::Config class in #{__FILE__}.".red
-            end
-        end #check
-        
-        def Config.valid?
-            not installation_root.empty? and not source_root.empty? and not user.empty? and not group.empty?
-        end #valid?
-        
-    end #Config
-
+  private
+  
+  def print_help
+    puts_ok <<-END
+    Script to help install the sources local without disturbing the distribution environment.
+    It uses auto-apt to install automatically the dependent packages.
+    Auto-apt tries to install the missing packages from the distribution repositories.
     
-    def interpret_cmds()
-        case ARGV[0]
-            when "install_newest_from"
-                 install_newest(ARGV[1], ARGV[2])
-            when "setup_auto-apt"
-                 AutoApt.setup()
-            else     
-                msg_ok <<-END
-                Script to install the newest sources local without disturbing the distribution environment.
-                It uses auto-apt to install automatically the dependent packages.
-                To configure it You must edit the InstallLocalFromSource::Config class in this file.
-                
-                To use the installed bins and libs You must use the environment variables
-                PATH, LD_LIBRARY_PATH and PKG_CONFIG_PATH in your development environment.
-         
-                PATH is to find installed binaries.
-                LD_LIBRARY_PATH is to find the installed libs.
-                PKG_CONFIG_PATH is to be able to compile agains the installed headers and libs.
-                
-                Commands:
-                
-                install_newest_from host dir
-                    
-                    E.g: install-local-from-source.rb install_newest_from "ftp.gnome.org" "/pub/GNOME/sources/clutter"
-                    
-                         downloads,
-                         extracts,
-                         configures (with the automatically installation of the needed dependent packages of the distibution)
-                         and installes
-                         the newest version of the clutter library.
-                         
-                setup_auto-apt
-                    
-                    installs (if needed) and setups the auto-apt.
-                END
-        end
-    end #interpret_cmds
+    To use the installed bins and libs You must use the environment variables
+    PATH, LD_LIBRARY_PATH and PKG_CONFIG_PATH in your development environment.
 
+    PATH            is to find installed binaries.
+    LD_LIBRARY_PATH is to find the installed libs.
+    PKG_CONFIG_PATH is to be able to compile agains the installed headers and libs.
     
-    private
+    Usage:
+    ------
     
-
-    def install_newest(host, dir)
+    install-local-from-source.rb command parameters
     
-        check_and_setup_environment
-        
-        downloader = Downloader.new
+    To get help to a command that needs parameter type the command without parameter.
     
-        exit if not downloader.download_newest_and_extract(host, dir)
+    Commands:
+    ---------
         
-        configure_build_install(downloader.get_unzipped_dir_name)
-    end #install_newest
+    setup                      It setups the download, install and usage environment.
+    list_versions              It lists the available versions. 
+    download_extract           It downloads and extracts a version.
+    configure_build_install    It configures builds and installs an already downloaded version.
+    END
+  end #print_help
 
-    def check_and_setup_environment
-    
-        Config::check
-
-        make_dir_if_not_exist(Config::installation_root, "Installation root")
-        make_dir_if_not_exist(Config::source_root,       "Source root")
-        
-        AutoApt::check
-        ShellVariables::check
-    end #check_and_setup_environment
-    
-    def make_dir_if_not_exist(dirpath, dirname)
-        if not File.directory?(dirpath)
-            msg_and_cmd("The #{dirname} doesnt exist. Creating directory.",
-                        "mkdir -p #{dirpath}")
-        end
-    end #check_and_setup_environment
-    
-    def configure_build_install(dir)
-        source_root     = Config::source_root
-        install_root    = Config::installation_root
-        user            = Config::user
-        group           = Config::group
-        number_of_cores = Config::number_of_cores
-        
-        dir_path = "#{source_root}/#{dir}"
-    
-        msg_and_cmd("Configure #{dir_path}",
-                    "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH auto-apt run ./configure --prefix=#{install_root}")
-        
-        msg_and_cmd("Give back the source directory to #{user}:#{group}",
-                    "sudo chown -R #{user}:#{group} #{dir_path}")
-        
-        msg_and_cmd("Build parallel on all cores",
-                    "cd #{dir_path}; make -j #{number_of_cores}")
-        
-        msg_and_cmd("Install",
-                    "cd #{dir_path}; make install")
-    end #configure_build_install
-    
-    class AutoApt
-    
-        def AutoApt.check()
-            if installed?()
-                msg_ok <<-END
-                auto-apt is installed. I ASSUME it setuped too. If it's not setuped, the needed packages that could be installed
-                from your distribution repositories automatically can not be installed automatically. In that case You must call:
-                install-local-from-source.rb setup_auto-apt
-                END
-            else
-                AutoApt.setup()
-            end
-        end #check
-        
-        def AutoApt.setup()
-            if not installed?()
-                msg_and_cmd("Installing auto-apt. You must type Y if You want to install (The question \"Do You want to continue [Y/n])\" is not seen.",
-                            "sudo apt-get  install auto-apt")
-            end
-            
-            msg_ok "Should I update the auto-apt database now? (yes/no) It can take a half an hour."
-            exit if STDIN.gets.strip != "yes"
-            
-            msg_and_cmd("auto-apt: Retrieve new lists of Contents (available file list.) It can take some time..",
-                        "sudo auto-apt update")
-            
-            
-            msg_and_cmd("auto-apt: Regenerate lists of Contents (available file list, no download).It can take some time..",
-                        "sudo auto-apt updatedb")
-            
-            msg_and_cmd("auto-apt: Generate installed file lists.It can take some time..",
-                        "sudo auto-apt update-local")
-
-        end #setup
-        
-        private
-        
-        def AutoApt.installed?()
-            `which auto-apt`
-            $?.success?
-        end #installed?
-        
-    end #AutoApt
-
-    class ShellVariables
-    
-        def ShellVariables.check()
-            variables_are_set  = true
-            installation_root = Config::installation_root
-            
-            variables_are_set  &= check_whether_a_path_variable_has_value("PATH",             "#{installation_root}/bin")
-            variables_are_set  &= check_whether_a_path_variable_has_value("LD_LIBRARY_PATH",  "#{installation_root}/lib")
-            variables_are_set  &= check_whether_a_path_variable_has_value("PKG_CONFIG_PATH",  "#{installation_root}/lib/pkgconfig")
-            
-            if not variables_are_set
-                msg_ok <<-END
-
-                One or more needed environment variables of PATH, LD_LIBRARY_PATH, PKG_CONFIG_PATH are not set.
-                Should I set them in your .bashrc? (yes/no)
-                END
-                
-                exit if STDIN.gets.strip != "yes"
-                
-                ShellVariables.setup()
-            end
-        end #check()
-         
-        private
-        
-        def ShellVariables.setup()
-            
-            open("#{ENV["HOME"]}/.bashrc", 'a') do |f|
-                installation_root = Config::installation_root
-                
-                variable_settings = <<-END
-                #set by install-local-from-source.rb 
-                ####################################
-                export PATH=#{installation_root}/bin:$PATH
-                export LD_LIBRARY_PATH=#{installation_root}/lib:$LD_LIBRARY_PATH
-                export PKG_CONFIG_PATH=#{installation_root}/lib/pkgconfig:$PKG_CONFIG_PATH
-
-                END
-                
-                f <<  variable_settings.align_to_right()
-            end
-
-            puts_and_exit "Your .bashrc is modified. The simplest way to use these modifications if You open a new terminal and run this script from that again.".green
-        end #setup()
-        
-        def ShellVariables.check_whether_a_path_variable_has_value(variable, expected_part)
-            if not ENV[variable] or not ENV[variable].include?(expected_part)
-                msg_error("#{expected_part} is not in #{variable}!")
-                return false
-            end
-            
-            true
-        end #check_whether_a_path_variable_has_value
-            
-    end #ShellVariables
-
-    class Downloader
-
-        def get_unzipped_dir_name
-             @unzipped_dir_name
-        end
-        
-        def download_newest_and_extract(host, dir)
-            source_root = Config::source_root
-            
-            Net::FTP.open(host) do |ftp|
-              ftp.login
-              
-              ftp.chdir(dir)
-              
-              #get the newest sub directory
-              newest_dir = get_the_newest_directory(ftp)
-              
-              #change directory into this dir
-              ftp.chdir(newest_dir)
-              file_datas = ftp.list('*')
-              
-              #get the newest tar file
-              newest_tar_file = get_the_newest_tar_file(ftp)
-              msg_ok "The newest version is: #{newest_tar_file}"
-              
-              @unzipped_dir_name = lib_and_version(newest_tar_file)
-              
-              unzipped_dir_path = "#{source_root}/#{@unzipped_dir_name}"
-              if File.exist?(unzipped_dir_path)
-                msg_ok "There is already a #{@unzipped_dir_name} dir in the download directory. Should it be used? (yes/no)"
-                if STDIN.gets.strip == "yes"
-                    msg_ok "#{@unzipped_dir_name} is not downloaded."
-                    return true
-                end
-                
-                msg_and_cmd("Removing #{unzipped_dir_path}",
-                            "cd #{source_root}; rm -rf #{@unzipped_dir_name}")
-              end
-              
-              download_path = "#{source_root}/#{newest_tar_file}"
-              msg_ok "Downloading #{newest_tar_file} to #{download_path}"
-              ftp.getbinaryfile(newest_tar_file, download_path)
-              
-              msg_and_cmd("Extracting #{newest_tar_file}",
-                          "cd #{source_root}; tar -xf #{newest_tar_file}")
-              throw "Can not extract #{newest_tar_file}" if not $?.success?
-              
-              msg_and_cmd("Removing #{newest_tar_file}",
-                          "cd #{source_root}; rm  #{newest_tar_file}")
-              
-              true
-            end #Net::FTP.open
-        end #download_newest_and_extract
-        
-        
-        private
-        
-        def lib_and_version(tar_file)
-            tar_file.match(/(.*)\.tar\..*/)[1]
-        end #lib_and_version
-         
-        def get_the_newest_directory(ftp)
-          name_and_creation_date = []
-          ftp.list('*') do |d|
-            elems = d.split
-            
-            #only directories are interesting
-            entry_rights = elems[0]
-            next if entry_rights !~ /^d.*/
-            
-            name_and_creation_date << get_name_and_creation_date(elems)
-          end
-          
-          throw "No directory entry in #{ftp.pwd}" if name_and_creation_date.empty?
-          
-          name_of_the_newest(name_and_creation_date)
-        end #get_the_newest_directory
-        
-        def get_the_newest_tar_file(ftp)
-          name_and_creation_date = []
-          ftp.list('*') do |d|
-            elems = d.split
-            
-            #only tar files are interesting
-            entry_name = elems[8]
-            next if entry_name !~ /\.tar\./
-            
-            name_and_creation_date << get_name_and_creation_date(elems)
-          end
-          
-          throw "No tar file in #{ftp.pwd}" if name_and_creation_date.empty?
-          
-          name_of_the_newest(name_and_creation_date)
-        end #get_the_newest_tar_file
-        
-        def get_name_and_creation_date(elems)
-            this_year = Date.today.year
-            
-            entry_name = elems[8]
-            month,day,year_or_time = elems[5..7]
-            year = if year_or_time.include?(":") then this_year else year_or_time end
-
-            creation_date = Date.parse("#{year}-#{month}-#{day}")
-            #"FTP servers that use a UNIX directory structure do not include year information for files modified within the last 6-12 months." Hehe
-            if Date.today < creation_date
-              year = Date.today.year - 1
-              creation_date = Date.parse("#{year}-#{month}-#{day}")
-            end
-            
-            {:entry_name => entry_name, :creation_date => creation_date}
-        end #get_name_and_creation_date
-          
-        def name_of_the_newest(name_and_creation_date)
-            name_and_creation_date.sort_by {|en_cd| en_cd[:creation_date]}[-1][:entry_name]
-        end #name_of_the_newest
-
-    end #Downloader
-
+  def setup
+    Setup.new.do_setup
+  end #setup
+  
+  def list_versions
+    ListVersions.new.workup_commands
+  end #list_versions
+  
+  def download_extract
+    DownloadExtract.new.workup_commands
+  end #download_extract
+  
+  def configure_build_install
+    ConfigureBuildInstall.new.workup_commands
+  end #configure_build_install
 end #InstallLocalFromSource
+
+
+
+class Setup
+
+  include TerminalUser
+  
+  def done?
+    [settings_setup_done?, dir_setup_done?, bashrc_setup_done?, auto_apt_setup_done?].all?
+  end #done?
+  
+  def do_setup
+    setup_settings
+    setup_dir
+    setup_bashrc
+    setup_auto_apt
+  end #do_setup
+  
+  private
+  
+  def settings_setup_done?
+    [not(Settings.installation_root.empty?), not(Settings.source_root.empty?)].all?
+  end #settings_setup_done?
+  
+  def dir_setup_done?
+    [Settings.installation_root, Settings.source_root].map{|d| File.directory?(d)}.all?
+  end #dir_setup_done?
+  
+  def bashrc_setup_done?
+    [path_variable_has_value?("PATH",             "#{Settings.installation_root}/bin"),
+     path_variable_has_value?("LD_LIBRARY_PATH",  "#{Settings.installation_root}/lib"),
+     path_variable_has_value?("PKG_CONFIG_PATH",  "#{Settings.installation_root}/lib/pkgconfig")].all?
+  end #bashrc_setup_done?
+  
+  def auto_apt_setup_done?
+    auto_apt_installed?
+    #I can not check, whether auto-apt is setuped too...
+  end #auto_apt_setup_done?
+
+  def setup_settings
+    if not settings_setup_done?
+      puts_error "You must edit the Settings class in #{__FILE__}."
+      exit
+    end
+    
+    puts_ok "Installation root and source root are defined."
+    puts_ok "  Installation root is #{Settings.installation_root}"
+    puts_ok "  Source root is       #{Settings.source_root}"
+  end #setup_settings
+  
+  def setup_dir
+    make_dir_if_not_exist(Settings.installation_root, "Installation root")
+    make_dir_if_not_exist(Settings.source_root,       "Source root")
+    
+    puts_ok "Installation root and source root directories exist."
+  end #setup_dir
+  
+  def setup_bashrc
+    if not bashrc_setup_done?
+      puts_ok <<-END
+      One or more needed environment variables of PATH, LD_LIBRARY_PATH, PKG_CONFIG_PATH are not set.
+      Should I set them in your .bashrc? (yes/no)
+      END
+      
+      exit if STDIN.gets.strip != "yes"
+      
+      File.open("#{ENV["HOME"]}/.bashrc", 'a') do |f|
+          installation_root = Settings.installation_root
+          
+          variable_settings = <<-END
+          #set by install-local-from-source.rb 
+          ####################################
+          export PATH=#{installation_root}/bin:$PATH
+          export LD_LIBRARY_PATH=#{installation_root}/lib:$LD_LIBRARY_PATH
+          export PKG_CONFIG_PATH=#{installation_root}/lib/pkgconfig:$PKG_CONFIG_PATH
+
+          END
+          
+          f <<  variable_settings.align_to_right()
+      end
+      puts_ok "Your .bashrc is modified. The simplest way to use these modifications if You open a new terminal and run this script from that again."
+      exit
+    end
+    
+    puts_ok "PATH, LD_LIBRARY_PATH, PKG_CONFIG_PATH are set right."
+  end #setup_bashrc
+  
+  def setup_auto_apt
+    if not auto_apt_installed?
+      puts_and_run("Installing auto-apt. You must type Y if You want to install (The question \"Do You want to continue [Y/n])\" is not seen.",
+                  "sudo apt-get install auto-apt")
+    else              
+      puts_ok <<-END
+      Auto-apt is installed.
+      I can not check, whether it's setuped.
+      If it's not setuped, the needed packages that could be installed from your distribution repositories
+      automatically can not be installed automatically.
+      END
+    end
+    
+    puts_ok "Should I update the auto-apt database now? (yes/no) It can take a half an hour."
+    exit if STDIN.gets.strip != "yes"
+    
+    puts_and_run("auto-apt: Retrieve new lists of Contents (available file list.) It can take some time..",
+                "sudo auto-apt update")
+    
+    puts_and_run("auto-apt: Regenerate lists of Contents (available file list, no download).It can take some time..",
+                "sudo auto-apt updatedb")
+    
+    puts_and_run("auto-apt: Generate installed file lists.It can take some time..",
+                "sudo auto-apt update-local")
+    
+    puts "Auto-apt is installed and setuped.".green
+  end #setup_auto_apt
+  
+  def make_dir_if_not_exist(dirpath, purpose)
+    if not File.directory?(dirpath)
+      puts_and_run("No #{purpose} directory. Creating it.",
+                   "mkdir -p #{dirpath}")
+    end
+  end #check_and_setup_environment
+  
+  def path_variable_has_value?(variable, expected_part)
+    ENV[variable] and ENV[variable].split(':').include?(expected_part)
+  end #path_variable_has_value?
+  
+  def auto_apt_installed?
+    `which auto-apt`
+    $?.success?
+  end #auto_apt_installed?
+end #Setup
+
+
+class  NeedsSetup
+
+  include TerminalUser
+  
+  def initialize
+    if not Setup.new.done?
+      puts_error "Setup is needed. Do install-local-from-source.rb setup" 
+      exit
+    end
+  end #initialize
+end
+
+  
+class ListVersions < NeedsSetup
+
+  def workup_commands
+    host = $*[1]
+    dir  = $*[2]
+    
+    if not [host,dir].all?
+      print_help
+      exit
+    end
+    
+    tar_files = Repository.new(host, dir).tar_files
+    
+    puts tar_files.sort_by {|v| v.creation_date}
+    puts_ok "Files are sorted by creation date. The stable version is not known."
+  end #workup_commands
+  
+  private
+
+  def print_help
+    puts_ok <<-END
+    install-local-from-source.rb list_versions host dir
+    
+    Example
+    -------
+    install-local-from-source.rb list_versions "ftp.gnome.org" "/pub/GNOME/sources/clutter"
+    END
+  end #print_help
+  
+end #ListVersions
+
+
+class DownloadExtract < NeedsSetup
+
+  def workup_commands
+    tarfile = $*[1]
+    host    = $*[2]
+    dir     = $*[3]
+    
+    if not [tarfile,host,dir].all?
+      print_help
+      exit
+    end
+    
+    install_dir = "#{Settings.source_root}/#{TarFile.project_version(tarfile)}"
+    if File.exist?(install_dir)
+      puts_ok "#{install_dir} already exists. Do you want to replace it with a new download? (yes/no)"
+      if STDIN.gets.strip != "yes"
+        puts_ok "Nothing happened."
+        exit
+      end
+    end
+    Repository.new(host, dir).download(tarfile)
+    
+    puts_and_run("Extracting #{tarfile}",
+                 "cd #{Settings.source_root}; tar -xf #{tarfile}")
+
+    puts_and_run("Removing #{tarfile}",
+                 "cd #{Settings.source_root}; rm  #{tarfile}")
+  end #workup_commands
+  
+  private
+
+  def print_help
+    puts_ok <<-END
+    install-local-from-source.rb download_extract tarfile host dir
+    
+    Example
+    -------
+    install-local-from-source.rb download_extract clutter-1.18.2.tar.xz "ftp.gnome.org" "/pub/GNOME/sources/clutter"
+    END
+  end #print_help
+  
+end #DownloadExtract
+
+
+class ConfigureBuildInstall < NeedsSetup
+
+  def workup_commands
+    project_version = $*[1]
+    
+    if not project_version
+      print_help
+      exit
+    end
+    
+    extracted_dir = "#{Settings.source_root}/#{project_version}"
+    if not Dir.exist?(extracted_dir)
+      puts_error "No dir #{extracted_dir}"
+      exit
+    end
+    
+    if extra_configure_options = $*[2..-1]
+      extra_configure_options = extra_configure_options.join(' ')
+    end
+    
+    configure_build_install(project_version, extra_configure_options)
+  end #workup_commands
+  
+  private
+
+  def print_help
+    puts_ok <<-END
+    install-local-from-source.rb configure_build_install project_version {extra_configure_options}
+    
+    Example
+    -------
+    install-local-from-source.rb configure_build_install clutter-1.18.2 --enable-introspection=yes
+    END
+  end #print_help
+  
+  def configure_build_install(project_version, extra_configure_options)
+    source_root     = Settings.source_root
+    install_root    = Settings.installation_root
+    user            = Settings.user
+    group           = Settings.group
+    number_of_cores = Settings.number_of_cores
+    
+    dir_path = "#{source_root}/#{project_version}"
+
+    msg_and_cmd("Configure #{dir_path}",
+                "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH auto-apt run ./configure --prefix=#{install_root} #{extra_configure_options}")
+    
+    msg_and_cmd("Give back the source directory to #{user}:#{group}",
+                "sudo chown -R #{user}:#{group} #{dir_path}")
+    
+    msg_and_cmd("Build parallel on all cores",
+                "cd #{dir_path}; make -j #{number_of_cores}")
+    
+    msg_and_cmd("Install",
+                "cd #{dir_path}; make install")
+  end #configure_build_install
+  
+end #ConfigureBuildInstall
+
+class TarFile
+
+  attr_reader :dir_name, :name, :creation_date
+  
+  def initialize(dir_name, ftp_dir_list_line)
+    @dir_name = dir_name
+    elems     = ftp_dir_list_line.split
+    this_year = Date.today.year
+    
+    entry_name             = elems[8]
+    month,day,year_or_time = elems[5..7]
+    year                   = if year_or_time.include?(":") then this_year else year_or_time end
+
+    creation_date = Date.parse("#{year}-#{month}-#{day}")
+    #"FTP servers that use a UNIX directory structure do not include year information for files modified within the last 6-12 months." Hehe
+    if Date.today < creation_date
+      year          = Date.today.year - 1
+      creation_date = Date.parse("#{year}-#{month}-#{day}")
+    end
+    
+    @name           = entry_name
+    @creation_date  = creation_date
+  end #initialize
+  
+  def to_s
+    "#{name}\t#{creation_date}"
+  end #to_s
+  
+  def TarFile.project_version(tarfile)
+    tarfile[ /(^.*-[\d\.]+)\.tar/, 1 ]
+  end #TarFile.project_version
+end #TarFile
+
+class Repository
+
+  include TerminalUser
+  
+  def initialize(host, dir)
+    raise "Currently only ftp hosts are supported." if host !~ /^ftp\./
+    
+    @host = host
+    @dir  = dir
+  end #initialize
+
+  def tar_files
+    versions = []
+    
+    Net::FTP.open(@host) do |ftp|
+      ftp.login
+      ftp.chdir(@dir)
+      
+      entry_count = ftp.ls('*').size
+      visited_entries = 0
+      ftp.ls('*') do |e1|
+        visited_entries = visited_entries+1
+        elems1 = e1.split
+        
+        #only directories are interesting
+        entry_rights = elems1[0]
+        if entry_rights !~ /^d.*/
+          #workaround for an ftp bug: next hangs if this is the last entry and recursive ls was used. Hehe
+          if visited_entries == entry_count
+            return versions
+          else
+            next
+          end
+        end
+        
+        dir_name = elems1[8]
+        puts "visiting #{dir_name}"
+        
+        ftp.chdir(dir_name)
+        ftp.ls('*') do |e2|
+          elems2 = e2.split
+          
+          #only tar files are interesting
+          entry_name = elems2[8]
+          next if entry_name !~ /\.tar\./
+          
+          versions << TarFile.new(dir_name, e2)
+        end        
+        ftp.chdir("..")
+      end
+    end
+    
+    puts "tar_files finished"
+    versions
+   end #tar_files
+
+  def download(tarfile)
+    if not version = tarfile[ /([\d\.]+)\.tar\./ , 1]
+     puts_error "Can not determine the version number of #{tarfile}"
+     exit      
+    end
+    if not main_version = version[ /\d+\.\d+/ ]
+     puts_error "Can not determine the main version number of #{tarfile}"
+     exit      
+    end
+    file_on_ftp   = "#{@dir}/#{main_version}/#{tarfile}"
+    download_path = "#{Settings.source_root}/#{tarfile}"
+    puts_ok "Downloading #{@host}:#{file_on_ftp} to #{download_path}"
+    Net::FTP.open(@host) do |ftp|
+      ftp.login
+      ftp.getbinaryfile(file_on_ftp, download_path)
+    end
+    
+    download_path
+  end #download
+   
+end #Repository
 
 class String
   # colorization
@@ -392,38 +553,7 @@ class String
 end #String
 
 
-def puts_and_exit(text)
-    puts text.align_to_right
-    exit
-end #puts_and_exit
+InstallLocalFromSource.new.workup_commands
 
-def msg_ok(text)
-    puts text.align_to_right.green
-end #msg_ok
-
-def msg_error(text)
-    puts text.align_to_right.red
-end #msg_error
-
-def msg_and_cmd(message, cmd)
-    msg_ok(message)
-    if not sh(cmd)
-        msg_error("Can not #{message}")
-        exit
-    end
-end #msg_and_cmd
-
-def sh(cmd)
-    puts cmd.align_to_right.pink
-    IO.popen("#{cmd}") do |io|
-        while l = io.gets
-            puts l
-        end
-    end 
-    
-    return $?.success?
-end #sh
-
-InstallLocalFromSource.new.interpret_cmds
 
 
