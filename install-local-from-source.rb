@@ -359,58 +359,77 @@ end #DownloadExtract
 class ConfigureBuildInstall < NeedsSetup
 
   def workup_commands
-    project_version = $*[1]
+    project_version         = $*[1]
+    extra_configure_options = $*[2..-1]
     
-    if not project_version
-      print_help
+    working_dir_path =  case project_version
+                          when nil
+                            print_help
+                            exit
+                          when "HERE"
+                            `pwd`.strip
+                          else
+                             "#{Settings.source_root}/#{project_version}"
+                        end
+    
+    if not Dir.exist?(working_dir_path)
+      puts_error "No dir #{working_dir_path}"
       exit
     end
     
-    extracted_dir = "#{Settings.source_root}/#{project_version}"
-    if not Dir.exist?(extracted_dir)
-      puts_error "No dir #{extracted_dir}"
-      exit
-    end
-    
-    if extra_configure_options = $*[2..-1]
+    if extra_configure_options
       extra_configure_options = extra_configure_options.join(' ')
     end
+
+    if not File.exist?("#{working_dir_path}/configure")
+      puts_error <<-END
+        No #{working_dir_path}/configure!
+        Run ./autogen.sh.
+        For that libtool, shtool, autogen, {gtk-doc-tools} must be installed.
+        END
+      exit
+    end
     
-    configure_build_install(project_version, extra_configure_options)
+    configure_build_install(working_dir_path, extra_configure_options)
   end #workup_commands
   
   private
 
   def print_help
     puts_ok <<-END
-    install-local-from-source.rb configure_build_install project_version {extra_configure_options}
+    install-local-from-source.rb configure_build_install [HERE|project_version] {extra_configure_options}
     
-    Example
-    -------
+    If HERE is given the configuration and build happens in the current directory
+    else in the #{Settings.source_root}/project_version directory.
+    
+    Examples
+    --------
     install-local-from-source.rb configure_build_install clutter-1.18.2 --enable-introspection=yes
+    
+    or
+    
+    cd opensource_fixes/gtk+ 
+    install-local-from-source.rb configure_build_install HERE
     END
   end #print_help
   
-  def configure_build_install(project_version, extra_configure_options)
-    source_root     = Settings.source_root
+  def configure_build_install(dir_path, extra_configure_options)
     install_root    = Settings.installation_root
     user            = Settings.user
     group           = Settings.group
     number_of_cores = Settings.number_of_cores
     
-    dir_path = "#{source_root}/#{project_version}"
-
-    msg_and_cmd("Configure #{dir_path}",
-                "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH auto-apt run ./configure --prefix=#{install_root} #{extra_configure_options}")
+    puts_and_run("Configure #{dir_path}",
+                 "cd #{dir_path}; sudo PKG_CONFIG_PATH=$PKG_CONFIG_PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH auto-apt run ./configure --prefix=#{install_root} #{extra_configure_options}")
     
-    msg_and_cmd("Give back the source directory to #{user}:#{group}",
-                "sudo chown -R #{user}:#{group} #{dir_path}")
+    puts_and_run("Give back the source directory to #{user}:#{group}",
+                 "sudo chown -R #{user}:#{group} #{dir_path}")
     
-    msg_and_cmd("Build parallel on all cores",
-                "cd #{dir_path}; make -j #{number_of_cores}")
+    puts_and_run("Build parallel on all cores",
+                 "cd #{dir_path}; make -j #{number_of_cores}")
     
-    msg_and_cmd("Install",
-                "cd #{dir_path}; make install")
+    puts_and_run("Install",
+                 "cd #{dir_path}; make install")
   end #configure_build_install
   
 end #ConfigureBuildInstall
